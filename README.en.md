@@ -78,7 +78,7 @@ After that, it checks automatically every 2 hours.
 
 ## Receive alerts through your lab's relay
 
-If your lab runs an alert relay, your admin gives you a relay address and your own personal key (usually by a direct message from the lab's bot). The key can send alerts only to you. Alerts arrive as a direct message from the lab's bot. The tracker sends each alert in both English and Korean, and the relay picks your language.
+If your lab runs an alert relay, you get a relay address and your own personal key from your lab's guide page or your admin (usually by a direct message from the lab's bot). The key can send alerts only to you. Alerts arrive as a direct message from the lab's bot. The tracker sends each alert in both English and Korean, and the relay picks your language.
 
 1. Skip step 2 (webhook).
 2. In step 3, add these two Secrets instead of `SLACK_WEBHOOK_URL`:
