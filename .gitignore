@@ -1,0 +1,5 @@
+config.env
+debug/
+__pycache__/
+.lock
+tracker.log

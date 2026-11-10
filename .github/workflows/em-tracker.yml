@@ -1,0 +1,87 @@
+name: EM 투고 상태 확인 (EM status check)
+
+on:
+  schedule:
+    - cron: "17 */2 * * *"  # 2시간마다 매시 17분 (정각은 GitHub 실행이 밀리기 쉬워 피함)
+  workflow_dispatch:
+    inputs:
+      mode:
+        description: "실행 방식 (mode)"
+        type: choice
+        options: [check, test-slack, dry-run, debug]
+        default: check
+
+permissions:
+  contents: write  # state.json 저장
+  actions: write   # 로그인이 거부되면 이 워크플로를 꺼서 계정 잠금을 막는다
+
+concurrency:
+  group: em-tracker
+  cancel-in-progress: false
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      TZ: Asia/Seoul
+      MODE: ${{ inputs.mode || 'check' }}
+      EM_SITE: ${{ secrets.EM_SITE }}
+      EM_USERNAME: ${{ secrets.EM_USERNAME }}
+      EM_PASSWORD: ${{ secrets.EM_PASSWORD }}
+      SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
+      SLACK_RELAY_URL: ${{ secrets.SLACK_RELAY_URL }}  # 선택: 연구실 알림 중계를 쓸 때 (웹훅 대신)
+      SLACK_RELAY_KEY: ${{ secrets.SLACK_RELAY_KEY }}
+      SLACK_BOT_TOKEN: ${{ secrets.SLACK_BOT_TOKEN }}  # 선택: 웹훅 대신 봇으로 DM을 받을 때
+      SLACK_CHANNEL: ${{ secrets.SLACK_CHANNEL }}
+      SLACK_MENTION: ${{ vars.SLACK_MENTION }}
+      JOURNAL_NAME: ${{ vars.JOURNAL_NAME }}
+      NOTIFY_LANG: ${{ vars.NOTIFY_LANG }}  # ko(기본) 또는 en
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - run: pip install -r requirements.txt
+
+      - name: 브라우저 확인
+        run: command -v google-chrome || python -m playwright install --with-deps chromium
+
+      - name: 상태 확인
+        id: check
+        run: |
+          case "$MODE" in
+            test-slack) python tracker.py --test-slack ;;
+            dry-run)    python tracker.py --dry-run ;;
+            debug)      python tracker.py --dry-run --debug ;;
+            *)          python tracker.py ;;
+          esac
+
+      - name: 상태 저장
+        if: always()
+        run: |
+          if [ -f state.json ] && [ -n "$(git status --porcelain -- state.json)" ]; then
+            git config user.name "github-actions[bot]"
+            git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+            git add state.json
+            git commit -m "상태 갱신 $(date '+%Y-%m-%d %H:%M')"
+            git push
+          fi
+
+      - name: 로그인이 거부되면 자동 확인 멈춤
+        if: failure() && steps.check.outputs.auth_error == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh workflow disable em-tracker.yml --repo "$GITHUB_REPOSITORY"
+
+      - name: 디버그 화면 올리기
+        if: always() && env.MODE == 'debug'
+        uses: actions/upload-artifact@v7
+        with:
+          name: debug
+          path: debug/
+          if-no-files-found: ignore
+          retention-days: 3
